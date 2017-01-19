@@ -1,0 +1,16 @@
+{
+  "name": "hapi-doc-test",
+  "version": "0.0.9",
+  "main": "./hapi.js",
+  "bin": {"hapi": "./main.js"},
+  "dependencies": {
+    "async": "1.4.2",
+    "clone": "1.0.2",
+    "glob": "7.0.5",
+    "lodash": "4.13.1",
+    "pretty-js": "0.1.8",
+    "request": "2.73.0",
+    "tv4": "1.2.7",
+    "urlsafe-base64": "1.0.0"
+  }
+}

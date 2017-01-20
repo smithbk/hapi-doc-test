@@ -1,5 +1,5 @@
 /*
- * hapidt - HTTP API Tester and documentation generator
+ * hapi-doc-test - HTTP API documentation generator and test tool
  * Each API has two sections: request and response.
  * 1) The request section describes the input to the API in terms of which
  *    variables are required to run the API; in other words, the each API
@@ -26,8 +26,8 @@ var glob = require('glob');
 
 var log;
 var APP_JSON = 'application/json';
-
 var FORMAT_IGNORE = 'format_ignore';
+var SCHEMA_REFS = false;
 
 // Custom validator function to ignore
 tv4.addFormat(FORMAT_IGNORE, function(data,schema) { return null; });
@@ -237,7 +237,7 @@ Hapi.prototype.compile = function(testNames) {
          if (match) apisToInsert.push(api);
       }
    }
-   
+
    // Insert all of the HAPI's which match the name of the test (or all if null) into a tree
    // rooted at 'root'
    var root = new Node(this,null);
@@ -334,7 +334,7 @@ Hapi.prototype.logErrors = function(prefix) {
    var errors = self.getErrors();
    if (errors.length > 0) {
       console.log("%s: %s",prefix,pretty(errors));
-   }   
+   }
 };
 
 Hapi.prototype.getErrors = function() {
@@ -349,7 +349,7 @@ function VirtualHost(hapi,info,vars) {
 }
 
 VirtualHost.prototype.getName = function() {
-   return this.info.host_variable;
+   return this.info.name || this.getHostVariable();
 };
 
 VirtualHost.prototype.getHostVariable = function() {
@@ -367,7 +367,9 @@ VirtualHost.prototype.gendoc = function() {
       doc[key] = swagger[key];
    }
    doc.paths = {};
-   doc.definitions = {};
+   if (SCHEMA_REFS) {
+      doc.definitions = {};
+   }
    var state = {};
    for (var i = 0; i < self.mapis.length; i++) {
       var mapi = self.mapis[i];
@@ -519,7 +521,7 @@ MultiResponseApi.prototype.getParameters = function(defs) {
          name: 'body',
          in: 'body',
          description: 'The request body',
-         required: 'true',
+         required: true,
          schema: bodySchema
       });
    }
@@ -672,7 +674,7 @@ Api.prototype.getMethod = function() {
 };
 
 Api.prototype.getUrl = function() {
-   return url.parse("http://host"+this.request.path); 
+   return url.parse("http://host"+this.request.path);
 };
 
 Api.prototype.getVirtualHost = function() {
@@ -684,7 +686,7 @@ Api.prototype.getPredefinedVars = function() {
 };
 
 Api.prototype.predefinesVar = function(varName) {
-   return this.mapi.predefinesVar(varName);   
+   return this.mapi.predefinesVar(varName);
 };
 
 Api.prototype.getOpts = function(request,vars) {
@@ -764,7 +766,7 @@ Api.prototype.scanActions = function(toScan,path) {
          case 'var_set':
             if (!toScan.var_set.path && !toScan.var_set.fcn) {
                if (!path || path.length === 0) {
-                  throw Error(util.format("%s contains a 'var_set' without a path: %j",self.name,toScan.var_set)); 
+                  throw Error(util.format("%s contains a 'var_set' without a path: %j",self.name,toScan.var_set));
                }
                if (isString(toScan.var_set)) {
                   toScan.var_set = {
@@ -1150,7 +1152,7 @@ RunContext.prototype.doHook = function (api, hook, cb) {
 
 RunContext.prototype.runHook = function (name, hook, cb) {
    var self = this;
-   if (!hook) { 
+   if (!hook) {
       if (log.isDebugEnabled()) log.debug("runHook: no %s",name);
       return cb();
     }
@@ -1165,7 +1167,7 @@ RunContext.prototype.runHook = function (name, hook, cb) {
 
 RunContext.prototype.runHook2 = function (name, hook, ctx, cb) {
    var self = this;
-   if (!hook) { 
+   if (!hook) {
       if (log.isDebugEnabled()) log.debug("runHook2: no %s",name);
       return cb();
     }
@@ -1218,7 +1220,7 @@ RunContext.prototype.runHook2 = function (name, hook, ctx, cb) {
       // Invoke the hook function
       try {
          hook.hook(ctx,function(err) {
-            if (err) throw err;       
+            if (err) throw err;
             return cb();
          });
       } catch (ex) {
@@ -1405,8 +1407,8 @@ RunContext.prototype.getSerialQueueName = function() {
 RunContext.prototype._sendRequest = function (cb) {
    var self = this;
    var response = {};
-   request(self.opts, function(err,resp,body) {       
-      try {        
+   request(self.opts, function(err,resp,body) {
+      try {
          if (err) throw err;
          response.headers = resp.headers;
          response.body = body;
@@ -1418,8 +1420,8 @@ RunContext.prototype._sendRequest = function (cb) {
             try {
                body = JSON.parse(body);
             } catch (err2) {
-               throw Error(util.format("error parsing JSON response from %s: error=%s, body=%j",self.name,err2,body));   
-            }  
+               throw Error(util.format("error parsing JSON response from %s: error=%s, body=%j",self.name,err2,body));
+            }
          }
          var statusCode = resp.statusCode;
          self.handleResponse(body,statusCode,contentType);
@@ -1433,13 +1435,13 @@ RunContext.prototype._sendRequest = function (cb) {
             self.logTestFailure(reqErr,response);
          }
       }
-      if (self.node === self.parent.node.preRun && err) { 
+      if (self.node === self.parent.node.preRun && err) {
          log.debug("ignoring errors for preRun %s", self.name);
         // err = null;
       }
       // err should be null on pass
       if (cb) { cb(err); }
-   }); // end request() 
+   }); // end request()
 };
 
 RunContext.prototype.sendRequest = function(cb) {
@@ -1486,7 +1488,7 @@ RunContext.prototype.handleResponse = function(body, statusCode, contentType) {
 RunContext.prototype.logTestPass = function (response) {
    if (this.ignoreFailures) {
       if (log.isDebugEnabled()) log.debug("%spassed: %s",this.indent,this.name);
-   } 
+   }
    else {
       if (log.isTraceEnabled()) log.trace("\n");
       if (log.isInfoEnabled()) log.info("%s) TEST PASSED: %s",this.id,this.name);
@@ -1497,7 +1499,7 @@ RunContext.prototype.logTestPass = function (response) {
          if (response.body && isString(response.body)) {
             try {
                response.body = JSON.parse(response.body);
-            } catch (e) {}  
+            } catch (e) {}
          }
          if (log.isTraceEnabled()) log.trace("%s     RESPONSE: %s", this.indent, pretty(response));
       }
@@ -1620,7 +1622,7 @@ RunContext.prototype.delVar = function(name) {
 };
 
 /*
- * At runtime, the HookContext provides an interface for passing data to user hooks 
+ * At runtime, the HookContext provides an interface for passing data to user hooks
  * such as before and after.
  */
 function HookContext(vars,runContext) {
@@ -1714,11 +1716,11 @@ HapiLoader.prototype.main = function() {
  * Factory for glob options object.
  */
 function buildGlobOpts (dir) {
-   // Tell glob to use the hapi dir as its cwd, and ignore files for which 
-   // we have special handling. We then check for an .hdtignore file, which 
+   // Tell glob to use the hapi dir as its cwd, and ignore files for which
+   // we have special handling. We then check for an .hdtignore file, which
    // allows users to exclude files from tests.
    var globOpts = {cwd:dir, mark:false, ignore:['**/swagger-*']};
-   
+
    if (existsSync(dir + '/.hdtignore')) {
       var patterns = fs.readFileSync(dir + '/.hdtignore', 'utf8').split('\n');
       if (patterns && patterns.length > 0) {
@@ -1727,7 +1729,7 @@ function buildGlobOpts (dir) {
          });
       }
    }
-   
+
    return globOpts;
 }
 
@@ -1738,14 +1740,14 @@ HapiLoader.prototype._loadDir = function(dir) {
    var self = this;
    var scopeHapis = { elements:[] };
    var allHapis = scopeHapis;
-   
+
    try {
       var globalPattern = '{*/,**/*.js,**/*.json}';
       var globOpts = buildGlobOpts(dir);
       // Process files & directories that match our pattern
       glob.sync(globalPattern, globOpts).forEach(function(file) {
          var path = dir + '/' + file;
-         
+
          // handle magic hapi file
          if (path.endsWith('/hapi.js')) {
             var hapi = require(path);
@@ -1754,7 +1756,7 @@ HapiLoader.prototype._loadDir = function(dir) {
                   scopeHapis[key] = hapi.hapi[key];
                }
             }
-         } else if (isDir(path)) {            
+         } else if (isDir(path)) {
             scopeHapis = { elements:[] };
             allHapis.elements.push({
                type: "elements",
@@ -1770,7 +1772,7 @@ HapiLoader.prototype._loadDir = function(dir) {
                });
             } catch (err) {
                self.errors.push(util.format("failed loading file %s in directory %s: %s",file,dir,err));
-            }  
+            }
          }
       });
    } catch (err) {
@@ -1839,10 +1841,11 @@ function getBodySchema(requestOrResponse,vars) {
    return null;
 }
 
-// Given a schema and a definitions section, return the reference to the body schema in the 
+// Given a schema and a definitions section, return the reference to the body schema in the
 // definitions section.  This is used for gendoc only.
 function getSchemaRef(schema,defs) {
    if (!schema) return null;
+   if (!SCHEMA_REFS) return schema;
    // Find or put the result in the definitions section
    var key;
    var keys = Object.keys(defs);
@@ -1932,16 +1935,30 @@ function bodyToJsonSchema(body,map,path,vars) {
    return result;
 }
 
+// This is called when generating swagger doc only to convert the
+// individual 'required' statements to the array format expected
+// by swagger
 function setSchemaRequiredArray(schema) {
    if (schema.type === 'object') {
       var required = [];
       forAll(schema.properties, function(key,val) {
-         if (val.required) required.push(key);
-         setSchemaRequiredArray(val);
+         if (val) {
+            if (val.required) {
+               required.push(key);
+            }
+            delete val.required;
+            setSchemaRequiredArray(val);
+         }
       });
-      schema.required = required;
+      if (required.length > 0) {
+         schema.required = required;
+      } else {
+         delete schema.required;
+      }
    } else if (schema.type === 'array') {
       setSchemaRequiredArray(schema.items);
+   } else {
+      delete schema.required;
    }
 }
 
@@ -2482,7 +2499,7 @@ Logger.prototype.trace = function() {
 };
 
 Logger.prototype.toString = function() {
-   return util.format("log level is %d",this.level); 
+   return util.format("log level is %d",this.level);
 };
 
 // The main function
@@ -2576,12 +2593,12 @@ exports.getArgs = function (options, mccpHome) {
    var opts = common.clone(options);
    opts.indir = opts.indir || path.join(mccpHome,'hapi');
    opts.outdir = opts.outdir || path.join(mccpHome,'api-docs');
-   // fs::existsSync and fs::exists are deprecated in Node, use our homebaked solution   
+   // fs::existsSync and fs::exists are deprecated in Node, use our homebaked solution
    if (existsSync(path.join(process.env.HOME,'hapi.json'))) {
       args.push('-config');
       args.push(path.join(process.env.HOME,'hapi.json'));
    }
-   
+
    exports.optionNames.forEach(function (o) {
       if (opts[o]) {
          args.push('-' + o);
@@ -2625,10 +2642,10 @@ function addNameValToVars(nv,vars) {
 
 function getFunctionName(fnc) {
    if (!fnc) { return null; }
-   
+
    // function.name in ES6
    if (fnc.name) { return fnc.name; }
-   
+
   var ret = fnc.toString();
   ret = ret.substr('function '.length);
   return ret.substr(0, ret.indexOf('('));

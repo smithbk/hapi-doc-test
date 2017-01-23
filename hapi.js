@@ -938,7 +938,9 @@ Node.prototype.insertApi = function(api) {
 
    // If no subtree was found that produces any of the needed variables, then add all producers of the 1st variable
    if (!found) {
-      var producers = hapi.getApiProducers(undefinedVars[0]);
+      var varName = undefinedVars[0];
+      var producers = hapi.getApiProducers(varName);
+      if (producers.length === 0) throw Error(util.format("There are no producers of the '%s' variable",varName));
       for (var j = 0; j < producers.length; j++) {
          self.insertApi(producers[j]);
       }
